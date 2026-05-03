@@ -1,0 +1,24 @@
+{
+  "rooms": {
+    "Standard": {
+      "price_per_night": 150,
+      "description": "35 m², King or Twin, max 2 adults"
+    },
+    "Deluxe": {
+      "price_per_night": 200,
+      "description": "45 m², King, max 2 adults + 1 child"
+    },
+    "Executive Suite": {
+      "price_per_night": 350,
+      "description": "65 m², King, max 3 adults or 2 adults + 2 children"
+    },
+    "Family Suite": {
+      "price_per_night": 500,
+      "description": "80 m², 2 Kings, max 4 adults + 2 children"
+    },
+    "Presidential Suite": {
+      "price_per_night": 1200,
+      "description": "150 m², King, max 4 adults"
+    }
+  }
+}

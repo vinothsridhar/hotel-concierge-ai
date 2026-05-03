@@ -1,0 +1,27 @@
+{
+  "name": "hotel-concierge-ai",
+  "version": "1.0.0",
+  "description": "AI-powered hotel assistant for guest queries via interactive CLI",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc && npm test",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ci": "vitest run --reporter=verbose"
+  },
+  "dependencies": {
+    "blessed": "^0.1.81",
+    "openai": "^4.0.0",
+    "yaml": "^2.3.0",
+    "dotenv": "^16.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "@types/blessed": "^0.1.0",
+    "ts-node": "^10.0.0",
+    "vitest": "^1.0.0"
+  }
+}

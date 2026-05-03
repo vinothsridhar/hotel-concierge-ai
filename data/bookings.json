@@ -1,0 +1,74 @@
+{
+  "tables": {
+    "guests": [
+      {
+        "id": "G001",
+        "name": "John Smith",
+        "email": "john.smith@email.com",
+        "phone": "+1 555-0101",
+        "loyalty_tier": "Gold",
+        "notes": "Allergic to shellfish"
+      },
+      {
+        "id": "G002",
+        "name": "Emily Johnson",
+        "email": "emily.j@email.com",
+        "phone": "+1 555-0102",
+        "loyalty_tier": "Platinum",
+        "notes": "Prefers high floor"
+      }
+    ],
+    "bookings": [
+      {
+        "id": "B1001",
+        "guest_id": "G001",
+        "room_type": "Standard",
+        "check_in": "2026-05-01",
+        "check_out": "2026-05-05",
+        "guests": 3,
+        "status": "confirmed",
+        "total_paid": 800,
+        "balance_due": 0,
+        "special_requests": "Early check-in, non-smoking room",
+        "created_at": "2026-04-15"
+      },
+      {
+        "id": "B1002",
+        "guest_id": "G002",
+        "room_type": "Executive Suite",
+        "check_in": "2026-05-03",
+        "check_out": "2026-05-08",
+        "guests": 1,
+        "status": "confirmed",
+        "total_paid": 1400,
+        "balance_due": 350,
+        "special_requests": "Late checkout, newspaper delivery",
+        "created_at": "2026-04-20"
+      }
+    ],
+    "invoices": [
+      {
+        "booking_id": "B1001",
+        "items": [
+          {
+            "description": "Deluxe Room - 4 nights",
+            "amount": 800
+          }
+        ],
+        "paid": 800,
+        "method": "Credit Card"
+      },
+      {
+        "booking_id": "B1002",
+        "items": [
+          {
+            "description": "Executive Suite - 5 nights",
+            "amount": 1750
+          }
+        ],
+        "paid": 1400,
+        "method": "Credit Card"
+      }
+    ]
+  }
+}

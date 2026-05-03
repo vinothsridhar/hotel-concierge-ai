@@ -1,0 +1,109 @@
+skills:
+  # Document-based skills (read from markdown files)
+  - name: rooms
+    type: document
+    description: Hotel room information, pricing, room types, amenities, and booking details
+    data_source: data/rooms.md
+
+  - name: dining
+    type: document
+    description: Restaurant menus, dining hours, reservations, food prices, and cuisine options
+    data_source: data/menus.md
+
+  - name: amenities
+    type: document
+    description: Hotel facilities including pool, beach, gym, spa, kids club, fitness center, and activities
+    data_source: data/amenities.md
+
+  # Database-based skills (query from JSON)
+  - name: bookings
+    type: database
+    description: Guest reservations, booking details, check-in/check-out dates, room type, guest count
+    data_source: data/bookings.json
+    requires_context: true
+    context_fields:
+      - name
+      - booking_id
+
+  - name: discrepancy
+    type: llm
+    description: Identify and analyze booking discrepancies, room type mismatches, pricing issues, or any inconsistency between what guest booked and what's showing. Returns diagnosis and offers resolution options.
+    requires_context: true
+    context_fields:
+      - name
+      - booking_id
+
+  - name: resolution
+    type: llm
+    description: Handle booking modification requests like downgrade, upgrade, date change, extend stay, early checkout, guest count update. Process the request and return confirmation.
+    requires_context: true
+    context_fields:
+      - name
+      - booking_id
+
+  - name: acknowledgment
+    type: static
+    description: Handle simple responses like yes, no, ok, thanks, that's all, goodbye
+    response: |
+      Great! If you need anything else during your stay, feel free to ask. Have a wonderful day!
+
+  - name: goodbye
+    type: static
+    description: Handle farewell messages like bye, goodbye, see you, thanks goodbye
+    response: |
+      Thank you for choosing Grand Horizon Hotel! We look forward to serving you. Goodbye and safe travels!
+
+  - name: wifi
+    type: static
+    description: WiFi and internet connection, network name, password, how to connect
+    response: |
+      Free high-speed WiFi is available throughout the hotel.
+      Network: GrandHorizon_Guest
+      Password: Your room key provides access
+
+  - name: checkout
+    type: static
+    description: Checkout time, late checkout policies, express checkout, check-out procedures
+    response: |
+      Standard checkout is 11:00 AM.
+      Late checkout ($50) available until 2:00 PM.
+      Express checkout available - settle your bill the night before.
+
+  - name: emergency
+    type: static
+    description: Emergency contacts, medical help, safety information, urgent assistance
+    response: |
+      Emergency: 911
+      Front Desk: Ext. 100
+      Medical: Ext. 102
+      Security: Ext. 103
+
+  - name: guest_info
+    type: database
+    description: Guest profile information including loyalty program status, membership tier, reward points, guest preferences and special requests
+    data_source: data/bookings.json
+    requires_context: true
+    context_fields:
+      - name
+      - email
+      - phone
+
+# LLM fallback (general queries)
+  - name: general
+    type: llm
+    description: General hotel assistance, recommendations, directions, transportation, and help
+    fallback: true
+
+# Skill router configuration
+router:
+  # Fallback to LLM if no skill matches
+  use_llm_fallback: true
+
+  # Confidence threshold for skill match (0-1)
+  confidence_threshold: 0.6
+
+  # Intent detection timeout (ms)
+  intent_timeout: 5000
+
+  # Response generation timeout (ms)
+  response_timeout: 30000
