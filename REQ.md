@@ -10,9 +10,10 @@
 ## 2. Technical Stack
 
 - **Language**: TypeScript (Node.js)
-- **TUI Framework**: Blessed (recommended) or Ink
-- **AI Integration**: OpenAI API (GPT-4) or local LLM
-- **Configuration**: YAML or JSON-based config file
+- **TUI Framework**: Blessed
+- **AI Integration**: OpenAI API (GPT-4) or compatible LLM
+- **Configuration**: YAML-based config file
+- **Testing**: Vitest
 
 ## 3. UI/UX Specification
 
@@ -63,18 +64,22 @@
    ```
 
 **Context Management:**
-    ```typescript
-    interface ConversationContext {
-      sessionId: string;
-      pendingSkill?: string;        // Skill waiting for more info
-      requiredFields?: string[];    // Fields needed (e.g., ['name', 'bookingId'])
-      extractedData?: Record<string, string>;  // User provided data
-      lastTopic?: string;           // Current topic (rooms, bookings, dining)
-      lastBookingId?: string;       // Last referenced booking ID
-      lastGuestId?: string;         // Last identified guest
-      history: ChatMessage[];
-    }
-    ```
+     ```typescript
+     interface PendingAction {
+       action: string;
+       skill: string;
+       context_data?: Record<string, string>;
+     }
+
+     interface ConversationContext {
+       pending_actions: PendingAction[];  // Array for multi-step flows
+       pending_fields?: string[];
+       extracted_data: Record<string, string>;
+       last_topic?: string;
+       last_booking_id?: string;
+       last_guest_id?: string;
+     }
+     ```
 
     **Conversation Reference Handling:**
     - Detect pronouns and references: "it", "that", "my booking", "the room", "my bill"
@@ -115,23 +120,38 @@
 3. **Skill Pipeline**
    - User query → Intent detection (LLM)
    - LLM classifies intent and extracts relevant skill
-   - Execute skill handler with query
+   - Execute skill handler via SkillChain
    - Return formatted response
    - Fall back to LLM if skill execution fails
 
-   **Intent Detection (LLM-based):**
-   ```typescript
-   interface IntentRequest {
-     query: string;
-     available_skills: SkillMeta[];  // name, description, intents
-   }
+   **SkillChain (Middleware-like Architecture):**
+   - Central execution hub for all skills (like Express.js middleware)
+   - Each skill registered by type (document, database, static, llm)
+   - Skills can forward to other skills via `skillChain.forward(type, context)`
+   - Separation of concerns: LLM analyzes → Database writes → Router responds
 
-   interface IntentResponse {
-     skill: string;           // Selected skill name
-     confidence: number;      // 0-1
-     reasoning: string;       // Why this skill was selected
-   }
-   ```
+**Intent Detection (LLM-based):**
+    ```typescript
+    interface IntentRequest {
+      query: string;
+      available_skills: SkillMeta[];  // name, description, intents
+    }
+
+    interface IntentResult {
+      skill_name: string;
+      confidence: number;
+      reasoning: string;
+      extracted_data?: Record<string, string>;
+      needs_context?: boolean;
+      pending_actions?: { action: string; needs: string; prompt: string }[];  // For multi-action requests
+    }
+    ```
+
+    **Multi-Action Support:**
+    - Single query can contain multiple actions (e.g., "upgrade room and add guest")
+    - LLM returns pending_actions array for actions needing additional input
+    - pendingActions tracked in array for sequential processing
+    - Example: User says "3" → applies to all pending actions
 
    **Intent Detection Prompt:**
    ```
@@ -170,37 +190,48 @@
    - Return personalized data
 
 **Skill Configuration:**
-    | Skill | Type | Data Source | Requires Context | Context Fields |
-    |-------|------|-------------|-----------------|---------------|
-    | rooms | document | data/rooms.md | No | - |
-    | dining | document | data/menus.md | No | - |
-    | amenities | document | data/amenities.md | No | - |
-    | bookings | database | bookings.json | Yes | name, booking_id |
-    | discrepancy | llm | - | Yes | name, booking_id |
-    | resolution | llm | - | Yes | name, booking_id |
-    | billing | database | bookings.json | Yes | name, booking_id, email |
-    | guest_info | database | bookings.json | Yes | name, email, phone |
-    | wifi | static | - | No | - |
-    | emergency | static | - | No | - |
-    | checkout | static | - | No | - |
-    | acknowledgment | static | - | No | - |
-    | goodbye | static | - | No | - |
-    | general | llm | - | No | - |
+     | Skill | Type | Data Source | Requires Context | Context Fields |
+     |-------|------|-------------|-----------------|---------------|
+     | rooms | document | data/rooms.md | No | - |
+     | dining | document | data/menus.md | No | - |
+     | amenities | document | data/amenities.md | No | - |
+     | bookings | database | bookings.json | Yes | name, booking_id |
+     | discrepancy | llm | - | Yes | name, booking_id |
+     | resolution | llm | - | Yes | name, booking_id |
+     | billing | database | bookings.json | Yes | name, booking_id, email |
+     | guest_info | database | bookings.json | Yes | name, email, phone |
+     | wifi | static | - | No | - |
+     | emergency | static | - | No | - |
+     | checkout | static | - | No | - |
+     | acknowledgment | static | - | No | - |
+     | goodbye | static | - | No | - |
+     | general | llm | - | No | - |
 
-    **New Skills:**
-    - **discrepancy** (LLM): Identifies booking issues (room mismatches, pricing issues) and offers resolution options
-    - **resolution** (LLM): Handles modification requests (upgrade, downgrade, date_change, extend_stay, guest_count_change). LLM outputs structured JSON, code executes the action
-    - **acknowledgment** (static): Handles simple responses like "yes", "no", "thanks"
-    - **goodbye** (static): Handles farewell messages
+     **Skills:**
+     - **discrepancy** (LLM): Identifies booking issues and offers resolution options
+     - **resolution** (LLM): Handles modification requests via SkillChain
+       - Actions: upgrade, downgrade, date_change, extend_stay, early_checkout, guest_count_change
+       - LLM outputs structured JSON, forwards to database skill for updates
+       - Supports multiple changes in single request
+     - **acknowledgment** (static): Handles simple responses like "yes", "no", "thanks"
+     - **goodbye** (static): Handles farewell messages
 
-    **Conversation Context:**
-    - LLM-based intent detection passes full conversation history to LLM
-    - Router maintains pendingAction for multi-step flows (e.g., guest count change)
-    - User can continue pending action with simple input (e.g., "3" after being asked for guest count)
+     **Chain of Skills:**
+     - Resolution skill uses skillChain.forward() to call database skill
+     - Database skill has updateBooking() method for writes
+     - Data changes flow through SkillChain, not direct modification
 
-    **Database Updates:**
-    - Resolution skill writes changes back to bookings.json (room_type, guest count)
-    - Prices loaded from data/prices.json (not hardcoded)
+**Conversation Context:**
+     - LLM-based intent detection with full conversation history
+     - pending_actions: array to track multi-step flows
+     - User input (like "3") can apply to all pending actions
+     - Resolution skill handles multiple actions in single request
+
+     **Database Updates (via SkillChain):**
+     - Resolution skill calls database skill via skillChain.forward()
+     - Database skill updateBooking() handles: room_type, guests, check_in, check_out
+     - Prices loaded from data/prices.json (not hardcoded)
+     - Changes written to bookings.json
 
 5. **Session Management**
    - Clear conversation history
@@ -221,33 +252,48 @@
 ## 5. File Structure
 
 ```
-hotel-assistant/
-├── config.yaml              # Configuration file
+hotel-concierge-ai/
+├── .env                      # Environment variables
+├── .env.example              # Template
+├── .gitignore               # Git ignore rules
+├── README.md                # Project documentation
+├── REQ.md                  # Requirements (this file)
+├── AGENTS.md                # Agent definitions
+├── progress.md             # Implementation progress
+├── package.json            # Dependencies
+├── package-lock.json        # Lock file
+├── tsconfig.json          # TypeScript config
+├── vitest.config.ts        # Test config
 ├── data/
-│   ├── rooms.md             # Room details (document skill)
-│   ├── menus.md             # Restaurant menus (document skill)
-│   ├── amenities.md         # Amenities info (document skill)
-│   ├── bookings.json        # Mock database (database skill)
-│   └── skills.yaml          # Skill configuration
+│   ├── rooms.md           # Room details (document skill)
+│   ├── menus.md           # Restaurant menus (document skill)
+│   ├── amenities.md      # Amenities info (document skill)
+│   ├── bookings.json    # Mock database (database skill)
+│   ├── prices.json     # Room pricing
+│   └── skills.yaml     # Skill configuration
 ├── src/
-│   ├── index.ts             # Entry point
+│   ├── index.ts           # Entry point
 │   ├── router/
-│   │   ├── skill_router.ts  # Intent detection & routing
-│   │   └── types.ts         # Skill interfaces
-│   ├── skills/              # Skill implementations
-│   │   ├── document_skill.ts    # Reads from .md files
-│   │   ├── database_skill.ts    # Queries JSON data
-│   │   ├── static_skill.ts      # Hardcoded responses
-│   │   └── llm_skill.ts         # OpenAI fallback
-│   ├── tui/                 # TUI components
-│   │   ├── app.ts           # Main application
-│   │   ├── widgets.ts       # Custom widgets
-│   │   └── screens.ts       # Screen definitions
-│   └── services/
-│       └── ai_service.ts    # OpenAI client
-├── package.json             # Dependencies
-├── tsconfig.json           # TypeScript config
-└── .env.example            # Environment variables template
+│   │   ├── skill_router.ts   # Intent detection & routing
+│   │   └── types.ts      # Skill interfaces
+│   ├── skills/
+│   │   ├── document_skill.ts  # Reads from .md files
+│   │   ├── database_skill.ts  # Queries/updates JSON data
+│   │   ├── static_skill.ts   # Hardcoded responses
+│   │   ├── llm_skill.ts      # OpenAI integration
+│   │   ├── skill_chain.ts   # Middleware-like execution hub
+│   │   └── types.ts
+│   ├── services/
+│   │   └── openai_client.ts  # OpenAI API wrapper
+│   └── tui/
+│       └── app.ts         # Blessed-based terminal UI
+└── tests/                 # Vitest test files
+    ├── document_skill.test.ts
+    ├── database_skill.test.ts
+    ├── static_skill.test.ts
+    ├── llm_client.test.ts
+    ├── router.test.ts
+    └── conversation.test.ts
 ```
 
 ## 6. Configuration
@@ -269,27 +315,34 @@ LOG_LEVEL=info
 ## 7. Acceptance Criteria
 
 **Application:**
-- [ ] Application launches without errors in terminal
-- [ ] User can type and receive responses
-- [ ] Quick action buttons work correctly
-- [ ] Chat history scrolls properly
-- [ ] Typing indicator shows during AI processing
-- [ ] Session can be cleared
-- [ ] Clean exit with Ctrl+C
+- [x] Application launches without errors in terminal
+- [x] User can type and receive responses
+- [x] Quick action buttons work correctly
+- [x] Chat history scrolls properly
+- [x] Typing indicator shows during AI processing
+- [x] Session can be cleared
+- [x] Clean exit with Ctrl+C
 
 **Skills:**
-- [ ] rooms skill returns room info from rooms.md
-- [ ] dining skill returns menu/hours from menus.md
-- [ ] amenities skill returns facilities from amenities.md
-- [ ] bookings skill queries from bookings.json
-- [ ] wifi/static skill returns hardcoded response
-- [ ] Unknown query falls back to LLM
-- [ ] Configuration loads from skills.yaml
+- [x] rooms skill returns room info from rooms.md
+- [x] dining skill returns menu/hours from menus.md
+- [x] amenities skill returns facilities from amenities.md
+- [x] bookings skill queries from bookings.json
+- [x] wifi/static skill returns hardcoded response
+- [x] Unknown query falls back to LLM
+- [x] Configuration loads from skills.yaml
+- [x] resolution skill handles multiple changes in single request
+- [x] date_change support (check_in, check_out)
+- [x] Chain of skills (SkillChain architecture)
 
 **Error Handling:**
-- [ ] API errors show user-friendly messages
-- [ ] Missing data files handled gracefully
-- [ ] Empty input validation
+- [x] API errors show user-friendly messages
+- [x] Missing data files handled gracefully
+- [x] Empty input validation
+
+**Testing:**
+- [x] Vitest test suite
+- [x] 45 tests passing
 
 ## 8. Future Enhancements (Out of Scope for Demo)
 

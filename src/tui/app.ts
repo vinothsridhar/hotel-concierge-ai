@@ -34,7 +34,9 @@ export class TUIApp {
       scrollable: true,
       alwaysScroll: true,
       mouse: true,
-      tags: true
+      tags: true,
+      vi: true,
+      keys: true
     });
 
     this.inputBox = blessed.textbox({
@@ -97,14 +99,12 @@ export class TUIApp {
   private handleUserInput(text: string): void {
     this.isProcessing = true;
     
-    // Add user message to messages
     this.messages.push({ role: 'user', content: text });
     this.addMessage('user', text);
 
     this.addMessage('assistant', 'Thinking...');
 
     this.router.route(text).then(response => {
-      // Add assistant response
       this.messages.push({ role: 'assistant', content: response.response });
       this.updateLastMessage(response.response);
       this.isProcessing = false;
@@ -116,24 +116,55 @@ export class TUIApp {
     });
   }
 
+  private parseMarkdown(text: string): string {
+    let parsed = text;
+
+    parsed = parsed.replace(/^### (.+)$/gm, '{bold}$1{/bold}');
+    parsed = parsed.replace(/^## (.+)$/gm, '{bold}$1{/bold}');
+    parsed = parsed.replace(/^# (.+)$/gm, '{bold}$1{/bold}');
+
+    parsed = parsed.replace(/\*\*(.+?)\*\*/g, '{bold}$1{/bold}');
+    parsed = parsed.replace(/\*(.+?)\*/g, '{italic}$1{/italic}');
+
+    parsed = parsed.replace(/^- (.+)$/gm, '  - $1');
+    parsed = parsed.replace(/^\d+\. (.+)$/gm, '  $1');
+
+    parsed = parsed.replace(/`(.+?)`/g, '{cyan}$1{/cyan}');
+
+    parsed = parsed.replace(/\[(.+?)\]\((.+?)\)/g, '{underline}$1{/underline}');
+
+    return parsed;
+  }
+
   private addMessage(role: 'user' | 'assistant', content: string): void {
-    const prefix = role === 'user' ? 'You: ' : 'Concierge: ';
-    const formatted = content.split('\n').map(line => `${prefix}${line}`).join('\n');
-    this.chatBox.pushLine(formatted);
+    const prefix = role === 'user' ? '{green}You:{/green} ' : '{cyan}Concierge:{/cyan} ';
+    const formatted = this.parseMarkdown(content);
+    const lines = formatted.split('\n');
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = i === 0 ? prefix + lines[i] : '  ' + lines[i];
+      this.chatBox.pushLine(line);
+    }
+    
     this.chatBox.setScrollPerc(100);
     this.screen.render();
   }
 
   private updateLastMessage(content: string): void {
-    const lines = this.chatBox.getContent().split('\n');
-    if (lines.length > 0) {
-      const prefix = 'Concierge: ';
-      const formatted = content.split('\n').join(`\n${prefix}`);
-      lines[lines.length - 1] = `${prefix}${formatted}`;
-      this.chatBox.setContent(lines.join('\n'));
-      this.chatBox.setScrollPerc(100);
-      this.screen.render();
+    const content_lines = this.chatBox.getContent().split('\n');
+    const parsed = this.parseMarkdown(content);
+    const lines = parsed.split('\n');
+    const prefix = '{cyan}Concierge:{/cyan} ';
+    
+    const newLines: string[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      newLines.push((i === 0 ? prefix : '  ') + lines[i]);
     }
+    
+    content_lines.splice(-1, 1, ...newLines);
+    this.chatBox.setContent(content_lines.join('\n'));
+    this.chatBox.setScrollPerc(100);
+    this.screen.render();
   }
 
   public showWelcome(): void {
@@ -142,13 +173,13 @@ export class TUIApp {
 
 How may I assist you today?
 - Room information and pricing
-- Dining options and reservations
+- Dining options and reservations  
 - Hotel amenities and facilities
 - Your booking details
 - WiFi and checkout info
 
 Type your question or press Enter.
-Press F2 to save conversation.
+Press **F2** to save conversation.
 `;
     this.chatBox.pushLine(welcome);
     this.screen.render();

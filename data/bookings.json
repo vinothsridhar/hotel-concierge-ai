@@ -16,16 +16,64 @@
         "phone": "+1 555-0102",
         "loyalty_tier": "Platinum",
         "notes": "Prefers high floor"
+      },
+      {
+        "id": "G675",
+        "name": "Sridhar",
+        "email": "sridhar@email.com",
+        "phone": "+1 555-0000",
+        "loyalty_tier": "Bronze",
+        "notes": ""
+      },
+      {
+        "id": "G635",
+        "name": "John Smith",
+        "email": "john.smith@email.com",
+        "phone": "+1 555-0000",
+        "loyalty_tier": "Bronze",
+        "notes": ""
+      },
+      {
+        "id": "G384",
+        "name": "Alice",
+        "email": "alice@email.com",
+        "phone": "+1 555-0000",
+        "loyalty_tier": "Bronze",
+        "notes": ""
+      },
+      {
+        "id": "G173",
+        "name": "John Smith",
+        "email": "john.smith@email.com",
+        "phone": "+1 555-0000",
+        "loyalty_tier": "Bronze",
+        "notes": ""
+      },
+      {
+        "id": "G349",
+        "name": "Alice",
+        "email": "alice@email.com",
+        "phone": "+1 555-0000",
+        "loyalty_tier": "Bronze",
+        "notes": ""
+      },
+      {
+        "id": "G320",
+        "name": "Sridhar",
+        "email": "sridhar@email.com",
+        "phone": "+1 555-0000",
+        "loyalty_tier": "Bronze",
+        "notes": ""
       }
     ],
     "bookings": [
       {
         "id": "B1001",
         "guest_id": "G001",
-        "room_type": "Standard",
+        "room_type": "Deluxe",
         "check_in": "2026-05-01",
         "check_out": "2026-05-05",
-        "guests": 3,
+        "guests": 2,
         "status": "confirmed",
         "total_paid": 800,
         "balance_due": 0,
@@ -44,6 +92,84 @@
         "balance_due": 350,
         "special_requests": "Late checkout, newspaper delivery",
         "created_at": "2026-04-20"
+      },
+      {
+        "id": "B4770",
+        "guest_id": "G675",
+        "room_type": "Deluxe",
+        "check_in": "2026-05-05",
+        "check_out": "2026-05-10",
+        "guests": 2,
+        "status": "confirmed",
+        "total_paid": 1000,
+        "balance_due": 0,
+        "special_requests": "",
+        "created_at": "2026-05-03"
+      },
+      {
+        "id": "B3976",
+        "guest_id": "G635",
+        "room_type": "Deluxe",
+        "check_in": "2026-05-05",
+        "check_out": "2026-05-10",
+        "guests": 2,
+        "status": "confirmed",
+        "total_paid": 1000,
+        "balance_due": 0,
+        "special_requests": "",
+        "created_at": "2026-05-03"
+      },
+      {
+        "id": "B9366",
+        "guest_id": "G384",
+        "room_type": "Executive Suite",
+        "check_in": "2026-05-15",
+        "check_out": "2026-05-18",
+        "guests": 2,
+        "status": "confirmed",
+        "total_paid": 1050,
+        "balance_due": 0,
+        "special_requests": "",
+        "created_at": "2026-05-03"
+      },
+      {
+        "id": "B7548",
+        "guest_id": "G173",
+        "room_type": "Deluxe",
+        "check_in": "2026-05-05",
+        "check_out": "2026-05-10",
+        "guests": 2,
+        "status": "confirmed",
+        "total_paid": 1000,
+        "balance_due": 0,
+        "special_requests": "",
+        "created_at": "2026-05-03"
+      },
+      {
+        "id": "B7286",
+        "guest_id": "G349",
+        "room_type": "Executive Suite",
+        "check_in": "2026-05-15",
+        "check_out": "2026-05-18",
+        "guests": 2,
+        "status": "confirmed",
+        "total_paid": 1050,
+        "balance_due": 0,
+        "special_requests": "",
+        "created_at": "2026-05-03"
+      },
+      {
+        "id": "B2082",
+        "guest_id": "G320",
+        "room_type": "Deluxe",
+        "check_in": "2026-05-05",
+        "check_out": "2026-05-10",
+        "guests": 2,
+        "status": "confirmed",
+        "total_paid": 1000,
+        "balance_due": 0,
+        "special_requests": "",
+        "created_at": "2026-05-03"
       }
     ],
     "invoices": [

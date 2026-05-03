@@ -25,6 +25,17 @@ skills:
       - name
       - booking_id
 
+  - name: make_reservation
+    type: llm
+    description: Create new room reservations, book rooms for guests, check availability and confirm bookings. Handles new booking requests with dates, room type, guest count.
+    requires_context: true
+    context_fields:
+      - name
+      - check_in
+      - check_out
+      - room_type
+      - guests
+
   - name: discrepancy
     type: llm
     description: Identify and analyze booking discrepancies, room type mismatches, pricing issues, or any inconsistency between what guest booked and what's showing. Returns diagnosis and offers resolution options.

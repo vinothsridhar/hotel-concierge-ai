@@ -2,13 +2,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SkillContext, SkillResponse } from '../router/types';
 import { LLMClient } from '../services/openai_client';
+import { SkillChain } from './skill_chain';
 
 export class LLMSkill {
   private openai: LLMClient;
   private dataCache: Map<string, unknown> = new Map();
+  private skillChain: SkillChain;
 
-  constructor(openai: LLMClient) {
+  constructor(openai: LLMClient, skillChain?: SkillChain) {
     this.openai = openai;
+    this.skillChain = skillChain || new SkillChain(openai);
   }
 
   private loadData(filePath: string): unknown {
@@ -28,52 +31,90 @@ export class LLMSkill {
     this.dataCache.set(filePath, data);
   }
 
+  private async handleReservation(query: string, skill: any): Promise<SkillResponse> {
+    const ctx = this.skillChain.reservationContext;
+
+    const prompt = `Extract reservation details from this user message.
+
+Current context: ${JSON.stringify(ctx)}
+
+User message: "${query}"
+
+Return JSON with fields you can extract: name, check_in (YYYY-MM-DD), check_out (YYYY-MM-DD), room_type (Standard/Deluxe/Executive Suite), guests (number)
+Example: "may 5 to may 10" = check_in: "2026-05-05", check_out: "2026-05-10"`;
+
+    const response = await this.openai.chat({
+      model: '',
+      messages: [{ role: 'system', content: prompt }, { role: 'user', content: query }]
+    });
+
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const extracted = JSON.parse(jsonMatch[0]);
+      Object.assign(ctx, extracted);
+    }
+
+    const missing = ['name', 'check_in', 'check_out', 'room_type'].filter(f => !ctx[f as keyof typeof ctx]);
+
+    if (missing.length > 0) {
+      return {
+        skill: skill.name,
+        response: `To complete your reservation, I still need: ${missing.join(', ')}. Could you provide these?`
+      };
+    }
+
+    const guests = ctx.guests || 2;
+    const result = this.createBooking(ctx.name!, ctx.check_in!, ctx.check_out!, ctx.room_type!, guests);
+    this.skillChain.reservationContext = {};
+    return result;
+  }
+
+  private createBooking(name: string, checkIn: string, checkOut: string, roomType: string, guests: number): SkillResponse {
+    const prices = this.loadData('data/prices.json') as { rooms: Record<string, { price_per_night: number }> };
+    const roomPrice = prices.rooms[roomType]?.price_per_night || 200;
+    const nights = Math.ceil((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24));
+    const total = roomPrice * nights;
+
+    const data = this.loadData('data/bookings.json') as { tables: Record<string, unknown[]> };
+    const guestId = 'G' + String(Date.now()).slice(-3);
+    const bookingId = 'B' + String(Math.floor(1000 + Math.random() * 9000));
+
+    data.tables['guests'].push({
+      id: guestId,
+      name: name,
+      email: name.toLowerCase().replace(' ', '.') + '@email.com',
+      phone: '+1 555-0000',
+      loyalty_tier: 'Bronze',
+      notes: ''
+    });
+
+    data.tables['bookings'].push({
+      id: bookingId,
+      guest_id: guestId,
+      room_type: roomType,
+      check_in: checkIn,
+      check_out: checkOut,
+      guests: guests,
+      status: 'confirmed',
+      total_paid: total,
+      balance_due: 0,
+      special_requests: '',
+      created_at: new Date().toISOString().split('T')[0]
+    });
+
+    this.saveData('data/bookings.json', data);
+
+    return {
+      skill: 'make_reservation',
+      response: `Your reservation is confirmed!\n\nBooking Reference: ${bookingId}\nGuest: ${name}\nRoom: ${roomType}\nCheck-in: ${checkIn}\nCheck-out: ${checkOut}\nGuests: ${guests}\nTotal: $${total}\n\nWe look forward to welcoming you!`
+    };
+  }
+
   async execute(context: SkillContext): Promise<SkillResponse> {
     const { query, skill, context_data } = context;
 
-    if (skill.name === 'discrepancy' && context_data) {
-      const bookingId = context_data['booking_id'];
-      if (bookingId) {
-        const data = this.loadData('data/bookings.json') as { tables: Record<string, unknown[]> };
-        const bookings = data.tables['bookings'] as Record<string, unknown>[];
-        const booking = bookings.find(b => b['id'] === bookingId);
-        
-        if (booking) {
-          const systemPrompt = `You are a hotel concierge. A guest has reported a booking discrepancy.
-          
-Booking details from our system:
-- Booking ID: ${booking['id']}
-- Room Type: ${booking['room_type']}
-- Check-in: ${booking['check_in']}
-- Check-out: ${booking['check_out']}
-- Total Paid: $${booking['total_paid']}
-- Status: ${booking['status']}
-
-The guest says: "${query}"
-
-Analyze the discrepancy and provide a helpful response that:
-1. Acknowledges their concern
-2. Explains what our system shows
-3. Offers specific resolution options (upgrade, date change, refund, speak to manager)
-4. Ask if they'd like to proceed with any option
-
-Be concise and empathetic.`;
-          
-          const response = await this.openai.chat({
-            model: '',
-            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: query }]
-          });
-          
-          return {
-            skill: skill.name,
-            response
-          };
-        }
-      }
-      return {
-        skill: skill.name,
-        response: "I understand there's a discrepancy with your booking. Could you provide your booking reference number so I can look into this for you?"
-      };
+    if (skill.name === 'make_reservation') {
+      return this.handleReservation(query, skill);
     }
 
     if (skill.name === 'resolution' && context_data) {
@@ -98,133 +139,80 @@ Be concise and empathetic.`;
           const nights = Math.ceil((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24));
           
           const systemPrompt = `You are a hotel concierge handling a booking modification request.
-          
-Current booking:
-- Booking ID: ${bookingId}
-- Room Type: ${currentRoom}
-- Check-in: ${checkIn}
-- Check-out: ${checkOut}
-- Total Paid: $${totalPaid}
-- Nights: ${nights}
-
-Available rooms and prices per night:
-${Object.entries(roomPrices).map(([name, price]) => `- ${name}: $${price}/night`).join('\n')}
-
+Current booking: ID ${bookingId}, Room ${currentRoom}, Check-in ${checkIn}, Check-out ${checkOut}, ${nights} nights, Paid $${totalPaid}
+Available rooms: ${Object.entries(roomPrices).map(([name, price]) => `${name}: $${price}/night`).join(', ')}
 Guest request: "${query}"
-
-Analyze the guest's request and determine what action they want. Common actions:
-- upgrade: guest wants a better room (higher price)
-- downgrade: guest wants a cheaper room (lower price)
-- date_change: guest wants to change dates
-- extend_stay: guest wants to stay longer
-- early_checkout: guest wants to leave earlier
-- guest_count_change: guest wants to add or remove guests
-
-Return ONLY valid JSON with this structure:
-{
-  "action": "upgrade|downgrade|date_change|extend_stay|early_checkout|guest_count_change|none",
-  "new_room": "Standard|Deluxe|Executive Suite|Family Suite|Presidential Suite" (for room changes),
-  "new_guest_count": number (for guest count changes),
-  "reason": "brief explanation of the change"
-}
-
-If the request is not a modification (e.g., just asking questions), return action: "none".`;
+Return JSON: { "action": "upgrade|downgrade|date_change|guest_count_change|none", "new_room": "...", "new_guest_count": number, "new_check_in": "...", "new_check_out": "..." }`;
 
           const llmResponse = await this.openai.chat({
             model: '',
             messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: query }]
           });
-          
+
           const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
-          let actionResult = { action: 'none', new_room: '', new_guest_count: 0, reason: '' };
+          let actionResult: { action: string; new_room: string; new_guest_count: number; new_check_in?: string; new_check_out?: string; reason: string } = { action: 'none', new_room: '', new_guest_count: 0, reason: '' };
           
           if (jsonMatch) {
-            try {
-              actionResult = JSON.parse(jsonMatch[0]);
-            } catch (e) {}
+            try { actionResult = JSON.parse(jsonMatch[0]); } catch (e) {}
           }
-          
-          let roomChange = false;
-          let guestCountChange = false;
-          let finalRoom = currentRoom;
-          let finalGuestCount = booking['guests'];
-          let resolutionResponse = '';
+
+          let roomChange = false, guestCountChange = false, dateChange = false;
+          let finalRoom = currentRoom, finalGuestCount = booking['guests'], finalCheckIn = checkIn, finalCheckOut = checkOut;
+          const updates: string[] = [];
           
           if (actionResult.new_room && actionResult.new_room !== currentRoom) {
             roomChange = true;
             finalRoom = actionResult.new_room;
+            const newPrice = roomPrices[actionResult.new_room] || 0;
+            const currentPrice = roomPrices[currentRoom] || 0;
+            const priceDiff = (newPrice - currentPrice) * nights;
+            
+            await this.skillChain.forward('database', {
+              query: query,
+              skill: { name: 'resolution', type: 'database', description: '' },
+              context_data: { booking_id: bookingId, room_type: actionResult.new_room }
+            });
+            
+            updates.push(priceDiff < 0 ? `Room downgraded to ${finalRoom} - Refund: $${Math.abs(priceDiff)}` : `Room changed to ${finalRoom}`);
           }
           
           if (actionResult.new_guest_count && actionResult.new_guest_count !== booking['guests']) {
             guestCountChange = true;
             finalGuestCount = actionResult.new_guest_count;
+            await this.skillChain.forward('database', {
+              query: query,
+              skill: { name: 'resolution', type: 'database', description: '' },
+              context_data: { booking_id: bookingId, guests: String(finalGuestCount) }
+            });
+            updates.push(`Guests updated to ${finalGuestCount}`);
           }
           
-          if (roomChange || guestCountChange) {
-            const updates: string[] = [];
-            
-            if (roomChange && actionResult.new_room) {
-              const newPrice = roomPrices[actionResult.new_room] || 0;
-              const currentPrice = roomPrices[currentRoom] || 0;
-              const priceDiff = (newPrice - currentPrice) * nights;
-              
-              bookings[bookingIndex] = { ...booking, room_type: actionResult.new_room };
-              
-              if (priceDiff < 0) {
-                updates.push(`Room downgraded to ${actionResult.new_room} - Refund: $${Math.abs(priceDiff)}`);
-              } else if (priceDiff > 0) {
-                updates.push(`Room upgraded to ${actionResult.new_room} - Additional: $${priceDiff}`);
-              } else {
-                updates.push(`Room changed to ${actionResult.new_room} (no price change)`);
-              }
-            }
-            
-            if (guestCountChange && actionResult.new_guest_count) {
-              bookings[bookingIndex] = { ...bookings[bookingIndex], guests: actionResult.new_guest_count };
-              updates.push(`Guest count updated to ${actionResult.new_guest_count}`);
-            }
-            
-            this.saveData('data/bookings.json', data);
-            
-            resolutionResponse = `I've successfully processed your changes.\n\n` +
-              `Updated Booking Details:\n` +
-              `- Booking ID: ${bookingId}\n` +
-              `- Room Type: ${finalRoom}\n` +
-              `- Guests: ${finalGuestCount}\n` +
-              `- Check-in: ${checkIn}\n` +
-              `- Check-out: ${checkOut}\n` +
-              `- Status: Confirmed\n\n` +
-              `Changes:\n` +
-              updates.map(u => `- ${u}`).join('\n') + '\n\n' +
-              `Is there anything else I can help you with?`;
-          } else if (actionResult.action === 'date_change' || actionResult.action === 'extend_stay' || actionResult.action === 'early_checkout') {
-            resolutionResponse = `I understand you'd like to ${actionResult.action.replace('_', ' ')}.\n\n` +
-              `Your current booking:\n` +
-              `- Check-in: ${checkIn}\n` +
-              `- Check-out: ${checkOut}\n\n` +
-              `To proceed with this change, could you please provide the new check-in or check-out date you'd prefer?`;
-          } else if (actionResult.action === 'guest_count_change') {
-            resolutionResponse = `I understand you'd like to change the guest count.\n\n` +
-              `Your current booking has ${booking['guests']} guest(s).\n\n` +
-              `Could you please specify the new guest count you'd like?`;
-          } else {
-            resolutionResponse = `I understand you're asking about your booking. Your current booking details are:\n\n` +
-              `- Room: ${currentRoom}\n` +
-              `- Check-in: ${checkIn}\n` +
-              `- Check-out: ${checkOut}\n\n` +
-              `If you'd like to make any changes (upgrade, downgrade, date change), just let me know!`;
+          if (actionResult.action === 'date_change' || actionResult.new_check_in || actionResult.new_check_out) {
+            dateChange = true;
+            finalCheckIn = actionResult.new_check_in || checkIn;
+            finalCheckOut = actionResult.new_check_out || checkOut;
+            await this.skillChain.forward('database', {
+              query: query,
+              skill: { name: 'resolution', type: 'database', description: '' },
+              context_data: { booking_id: bookingId, check_in: finalCheckIn, check_out: finalCheckOut }
+            });
+            updates.push(`Dates: ${finalCheckIn} to ${finalCheckOut}`);
           }
-          
+
+          if (updates.length > 0) {
+            return {
+              skill: skill.name,
+              response: `Changes processed:\n${updates.map(u => '- ' + u).join('\n')}\nBooking ${bookingId} updated.\n\nAnything else?`
+            };
+          }
+
           return {
             skill: skill.name,
-            response: resolutionResponse
+            response: `Your booking:\nRoom: ${currentRoom}\nCheck-in: ${checkIn}\nCheck-out: ${checkOut}\n\nWhat would you like to change?`
           };
         }
       }
-      return {
-        skill: skill.name,
-        response: "I need your booking reference to process this request. Could you provide your booking ID?"
-      };
+      return { skill: skill.name, response: "I need your booking ID." };
     }
 
     const response = await this.openai.chat({
@@ -232,9 +220,6 @@ If the request is not a modification (e.g., just asking questions), return actio
       messages: [{ role: 'user', content: query }]
     });
     
-    return {
-      skill: skill.name,
-      response
-    };
+    return { skill: skill.name, response };
   }
 }

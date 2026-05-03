@@ -60,6 +60,14 @@
 - 2026-05-03: Fixed resolution skill to handle multiple actions in single request (room + guest count change)
 - 2026-05-03: Changed pendingAction to pendingActions array to support multi-step flows with multiple pending actions
 - 2026-05-03: LLM returns pending_actions list to identify multiple actions needing additional input in single query
+- 2026-05-03: Chain of skills - resolution skill calls database skill to update data (not direct modification)
+- 2026-05-03: Added SkillChain (middleware-like) for skill execution routing
+- 2026-05-03: Added date_change support (check_in, check_out) in resolution skill
+- 2026-05-03: Fixed TUI - added markdown parsing (bold, italic, lists, code) and proper scrolling
+- 2026-05-03: Added conversational wrapper - greetings, follow-ups, topic-specific prompts
+- 2026-05-03: Added make_reservation context_fields for booking flow
+- 2026-05-03: Fixed pendingActions - only continue flow for make_reservation skill
+- 2026-05-03: Added ReservationHandler - in-memory context for booking flow
 
 ---
 

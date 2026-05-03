@@ -17,6 +17,7 @@ export class SkillRouter {
   private llmSkill: LLMSkill;
   private conversationHistory: string[] = [];
   private pendingActions: PendingAction[] = [];
+  private lastSkillNeedingContext: string | null = null;
 
   constructor(skillsPath: string, openai: LLMClient) {
     this.openai = openai;
@@ -99,32 +100,64 @@ IMPORTANT - Multiple Actions:
   }
 
   async route(query: string): Promise<SkillResponse> {
-    this.conversationHistory.push("User: " + query);
+    try {
+      this.conversationHistory.push("User: " + query);
 
-    if (this.pendingActions.length > 0) {
-      const numberMatch = query.match(/^\d+$/);
-      if (numberMatch) {
-        const skill = this.skills.find(s => s.name === 'resolution');
-        if (skill) {
-          const results: string[] = [];
-          for (const pendingAction of this.pendingActions) {
-            if (pendingAction.context_data?.['booking_id']) {
-              const contextData = { ...pendingAction.context_data, new_guest_count: String(parseInt(query)) };
-              const result = await this.executeSkill(query, skill, contextData);
-              results.push(result.response);
+      if (this.pendingActions.length > 0) {
+        const numberMatch = query.match(/^\d+$/);
+        if (numberMatch) {
+          const skill = this.skills.find(s => s.name === 'resolution');
+          if (skill) {
+            const results: string[] = [];
+            for (const pendingAction of this.pendingActions) {
+              if (pendingAction.context_data?.['booking_id']) {
+                const contextData = { ...pendingAction.context_data, new_guest_count: String(parseInt(query)) };
+                const result = await this.executeSkill(query, skill, contextData);
+                results.push(result.response);
+              }
             }
-          }
-          this.pendingActions = [];
-          if (results.length > 0) {
-            const combinedResponse = results.join("\n\n");
-            this.conversationHistory.push("Assistant: " + combinedResponse.split("\n")[0] + "...");
-            return { skill: skill.name, response: combinedResponse };
+            this.pendingActions = [];
+            if (results.length > 0) {
+              const combinedResponse = results.join("\n\n");
+              this.conversationHistory.push("Assistant: " + combinedResponse.split("\n")[0] + "...");
+              return { skill: skill.name, response: combinedResponse };
+            }
           }
         }
       }
-    }
 
-    const intent = await this.detectIntent(query);
+      if (this.lastSkillNeedingContext) {
+        const skill = this.skills.find(s => s.name === this.lastSkillNeedingContext);
+        if (skill && skill.requires_context && skill.context_fields) {
+          const extracted = await this.extractFromHistory(query);
+          const contextData: Record<string, string> = {};
+          
+          for (const field of skill.context_fields) {
+            if (extracted[field]) {
+              contextData[field] = extracted[field];
+            }
+          }
+
+          const stillNeedsInfo = skill.context_fields.some(field => contextData[field]);
+
+          if (!stillNeedsInfo) {
+            const prompt = this.askForContext(skill.name, skill.context_fields);
+            return {
+              skill: skill.name,
+              response: prompt,
+              needs_context: true,
+              context_prompt: prompt
+            };
+          }
+
+          const result = await this.executeSkill(query, skill, contextData);
+          this.conversationHistory.push("Assistant: " + result.response.split("\n")[0] + "...");
+          this.lastSkillNeedingContext = null;
+          return result;
+        }
+      }
+
+      const intent = await this.detectIntent(query);
     
     if (intent.confidence >= this.config.confidence_threshold) {
       const skill = this.skills.find(s => s.name === intent.skill_name);
@@ -151,6 +184,7 @@ IMPORTANT - Multiple Actions:
 
           if (!stillNeedsInfo) {
             const prompt = this.askForContext(skill.name, skill.context_fields);
+            this.lastSkillNeedingContext = skill.name;
             return {
               skill: skill.name,
               response: prompt,
@@ -189,7 +223,14 @@ IMPORTANT - Multiple Actions:
       skill: 'general',
       response: "I'm here to help with any questions about your stay. Please ask me about rooms, dining, amenities, or your booking."
     };
+  } catch (e: any) {
+    console.error('Route error:', e);
+    return {
+      skill: 'general',
+      response: "Sorry, something went wrong. Please try again."
+    };
   }
+}
 
   private async extractFromHistory(query: string): Promise<Record<string, string>> {
     const prompt = `Extract guest identification from this query or conversation history.
