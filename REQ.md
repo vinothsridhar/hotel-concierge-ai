@@ -11,8 +11,8 @@
 
 - **Language**: TypeScript (Node.js)
 - **TUI Framework**: Blessed
-- **AI Integration**: OpenAI API (GPT-4) or compatible LLM
-- **Configuration**: YAML-based config file
+- **AI Integration**: OpenAI Agents SDK for JavaScript/TypeScript (`@openai/agents`)
+- **Configuration**: Environment variables via `.env`
 - **Testing**: Vitest
 
 ## 3. UI/UX Specification
@@ -93,81 +93,50 @@
     User: "I booked standard but shows deluxe" → uses B1001 context, handles discrepancy
     ```
 
-2. **Skill Router System**
-   Each user query is routed to appropriate skill(s) based on intent detection.
+2. **OpenAI Agents SDK Workflow**
+   Each user query is handled by an Agents SDK triage agent and delegated through handoffs to the best specialist agent.
 
-**Skill Types:**
-    | Type | Description | Data Source | Conversational |
-    |------|-------------|-------------|---------------|
-    | Document | Reads from markdown/JSON files | .md files | No |
-    | Database | Queries structured data | JSON/SQL | Yes (needs ID/name) |
-    | Static | Hardcoded responses | N/A | No |
-    | LLM | AI-powered fallback | OpenAI API | No |
+**Agent Types:**
+    | Agent | Description | Data Source | Conversational |
+    |-------|-------------|-------------|---------------|
+    | Triage Agent | Routes requests to specialist agents | N/A | Yes |
+    | Rooms Agent | Room types, pricing, beds, room amenities | `data/rooms.md` via tool | No |
+    | Dining Agent | Restaurants, menus, hours, prices | `data/menus.md` via tool | No |
+    | Amenities Agent | Facilities, pool, spa, gym, activities | `data/amenities.md` via tool | No |
+    | Guest Records Agent | Existing bookings, profiles, invoices | `data/bookings.json` via tool | Yes |
+    | Reservation Agent | Creates new room reservations | `data/bookings.json`, `data/prices.json` via tool | Yes |
+    | Booking Resolution Agent | Updates room type, dates, and guest count | `data/bookings.json` via tool | Yes |
+    | Static Policy Agents | WiFi, checkout, emergency contacts | Agent instructions | No |
+    | General Concierge Agent | General fallback help | OpenAI model | Yes |
 
-**Skill Definition:**
+**Agent Definition Pattern:**
     ```typescript
-    interface Skill {
-      name: string;
-      type: 'document' | 'database' | 'static' | 'llm';
-      description: string;
-      data_source?: string;        // File path or table name
-      response?: string;           // Static response text
-      requires_context?: boolean; // Needs guest identification
-      context_fields?: string[];    // Required fields: 'name', 'booking_id', 'email', 'phone'
-    }
+    const roomsAgent = new Agent({
+      name: 'Rooms Agent',
+      handoffDescription: 'Answers room type and price questions.',
+      instructions: 'Use get_room_info before answering room questions.',
+      tools: [roomsTool]
+    });
     ```
 
-3. **Skill Pipeline**
-   - User query → Intent detection (LLM)
-   - LLM classifies intent and extracts relevant skill
-   - Execute skill handler via SkillChain
-   - Return formatted response
-   - Fall back to LLM if skill execution fails
+3. **Agent Pipeline**
+   - User query → `HotelAgentService.route()`
+   - `Runner` runs `triageAgent` with `MemorySession`
+   - `triageAgent` selects a specialist through Agents SDK handoffs
+   - Specialist agent calls a tool or returns static policy guidance
+   - Final output returns to the TUI
 
-   **SkillChain (Middleware-like Architecture):**
-   - Central execution hub for all skills (like Express.js middleware)
-   - Each skill registered by type (document, database, static, llm)
-   - Skills can forward to other skills via `skillChain.forward(type, context)`
-   - Separation of concerns: LLM analyzes → Database writes → Router responds
+   **Agents SDK Primitives:**
+   - `Agent` defines triage and specialist behavior
+   - `tool()` exposes local data access and update functions
+   - `handoffs` replace custom intent routing
+   - `Runner` executes agent workflows
+   - `MemorySession` preserves conversation history across turns
 
-**Intent Detection (LLM-based):**
-    ```typescript
-    interface IntentRequest {
-      query: string;
-      available_skills: SkillMeta[];  // name, description, intents
-    }
-
-    interface IntentResult {
-      skill_name: string;
-      confidence: number;
-      reasoning: string;
-      extracted_data?: Record<string, string>;
-      needs_context?: boolean;
-      pending_actions?: { action: string; needs: string; prompt: string }[];  // For multi-action requests
-    }
-    ```
-
-    **Multi-Action Support:**
-    - Single query can contain multiple actions (e.g., "upgrade room and add guest")
-    - LLM returns pending_actions array for actions needing additional input
-    - pendingActions tracked in array for sequential processing
-    - Example: User says "3" → applies to all pending actions
-
-   **Intent Detection Prompt:**
-   ```
-   Given the user query and available skills, select the best matching skill.
-   
-   Available skills:
-   - rooms: Hotel room information, pricing, amenities
-   - dining: Restaurant menus, hours, reservations
-   - bookings: Guest reservations, booking details
-   - wifi: WiFi and internet information
-   - general: General assistance and recommendations
-   
-   User query: "{query}"
-   
-   Return JSON with: skill, confidence (0-1), reasoning
-   ```
+   **Multi-Action Support:**
+   - Single query can contain multiple actions, such as "upgrade room and add guest"
+   - Booking Resolution Agent interprets the request and uses `update_booking`
+   - If required details are missing, specialist agents ask follow-up questions
 
 4. **Data Files**
    
@@ -189,49 +158,37 @@
    - Query the database with matched identifier
    - Return personalized data
 
-**Skill Configuration:**
-     | Skill | Type | Data Source | Requires Context | Context Fields |
-     |-------|------|-------------|-----------------|---------------|
-     | rooms | document | data/rooms.md | No | - |
-     | dining | document | data/menus.md | No | - |
-     | amenities | document | data/amenities.md | No | - |
-     | bookings | database | bookings.json | Yes | name, booking_id |
-     | discrepancy | llm | - | Yes | name, booking_id |
-     | resolution | llm | - | Yes | name, booking_id |
-     | billing | database | bookings.json | Yes | name, booking_id, email |
-     | guest_info | database | bookings.json | Yes | name, email, phone |
-     | wifi | static | - | No | - |
-     | emergency | static | - | No | - |
-     | checkout | static | - | No | - |
-     | acknowledgment | static | - | No | - |
-     | goodbye | static | - | No | - |
-     | general | llm | - | No | - |
+**Agent and Tool Configuration:**
+      | Capability | Implementation | Data Source | Requires Context |
+      |------------|----------------|-------------|-----------------|
+      | Rooms | `roomsAgent` + `roomsTool` | `data/rooms.md` | No |
+      | Dining | `diningAgent` + `diningTool` | `data/menus.md` | No |
+      | Amenities | `amenitiesAgent` + `amenitiesTool` | `data/amenities.md` | No |
+      | Bookings | `databaseAgent` + `databaseTool` | `data/bookings.json` | Yes |
+      | Billing | `databaseAgent` + `databaseTool` | `data/bookings.json` | Yes |
+      | Guest Info | `databaseAgent` + `databaseTool` | `data/bookings.json` | Yes |
+      | Reservation | `reservationAgent` + `reservationTool` | `data/bookings.json`, `data/prices.json` | Yes |
+      | Resolution | `resolutionAgent` + `updateBookingTool` | `data/bookings.json` | Yes |
+      | WiFi | `wifiAgent` | Agent instructions | No |
+      | Emergency | `emergencyAgent` | Agent instructions | No |
+      | Checkout | `checkoutAgent` | Agent instructions | No |
+      | General | `generalAgent` | OpenAI model | No |
 
-     **Skills:**
-     - **discrepancy** (LLM): Identifies booking issues and offers resolution options
-     - **resolution** (LLM): Handles modification requests via SkillChain
-       - Actions: upgrade, downgrade, date_change, extend_stay, early_checkout, guest_count_change
-       - LLM outputs structured JSON, forwards to database skill for updates
-       - Supports multiple changes in single request
-     - **acknowledgment** (static): Handles simple responses like "yes", "no", "thanks"
-     - **goodbye** (static): Handles farewell messages
-
-     **Chain of Skills:**
-     - Resolution skill uses skillChain.forward() to call database skill
-     - Database skill has updateBooking() method for writes
-     - Data changes flow through SkillChain, not direct modification
+      **Specialist Agents:**
+      - **databaseAgent**: Looks up bookings, guest profiles, and invoices.
+      - **reservationAgent**: Collects missing reservation details and creates bookings.
+      - **resolutionAgent**: Handles room, date, and guest count changes.
+      - **static policy agents**: Handle WiFi, emergency, and checkout responses.
 
 **Conversation Context:**
-     - LLM-based intent detection with full conversation history
-     - pending_actions: array to track multi-step flows
-     - User input (like "3") can apply to all pending actions
-     - Resolution skill handles multiple actions in single request
+      - Agents SDK `MemorySession` maintains conversation history across turns.
+      - Specialist agents ask for missing booking identifiers or reservation details.
+      - Follow-up requests are interpreted using the active session history.
 
-     **Database Updates (via SkillChain):**
-     - Resolution skill calls database skill via skillChain.forward()
-     - Database skill updateBooking() handles: room_type, guests, check_in, check_out
-     - Prices loaded from data/prices.json (not hardcoded)
-     - Changes written to bookings.json
+      **Database Updates (via Tools):**
+      - `updateBookingTool` handles: `room_type`, `guests`, `check_in`, `check_out`.
+      - `reservationTool` uses `data/prices.json` for room pricing.
+      - Changes are written to `data/bookings.json`.
 
 5. **Session Management**
    - Clear conversation history
@@ -255,45 +212,42 @@
 hotel-concierge-ai/
 ├── .env                      # Environment variables
 ├── .env.example              # Template
-├── .gitignore               # Git ignore rules
-├── README.md                # Project documentation
-├── REQ.md                  # Requirements (this file)
-├── AGENTS.md                # Agent definitions
-├── progress.md             # Implementation progress
-├── package.json            # Dependencies
-├── package-lock.json        # Lock file
-├── tsconfig.json          # TypeScript config
-├── vitest.config.ts        # Test config
+├── .gitignore                # Git ignore rules
+├── README.md                 # Project documentation
+├── REQ.md                    # Requirements
+├── AGENTS.md                 # Agent implementation guide
+├── progress.md               # Implementation progress
+├── package.json              # Dependencies
+├── package-lock.json         # Lock file
+├── tsconfig.json             # TypeScript config
+├── vitest.config.ts          # Test config
 ├── data/
-│   ├── rooms.md           # Room details (document skill)
-│   ├── menus.md           # Restaurant menus (document skill)
-│   ├── amenities.md      # Amenities info (document skill)
-│   ├── bookings.json    # Mock database (database skill)
-│   ├── prices.json     # Room pricing
-│   └── skills.yaml     # Skill configuration
+│   ├── rooms.md              # Room details
+│   ├── menus.md              # Restaurant menus
+│   ├── amenities.md          # Amenities info
+│   ├── bookings.json         # Mock database
+│   └── prices.json           # Room pricing
 ├── src/
-│   ├── index.ts           # Entry point
-│   ├── router/
-│   │   ├── skill_router.ts   # Intent detection & routing
-│   │   └── types.ts      # Skill interfaces
-│   ├── skills/
-│   │   ├── document_skill.ts  # Reads from .md files
-│   │   ├── database_skill.ts  # Queries/updates JSON data
-│   │   ├── static_skill.ts   # Hardcoded responses
-│   │   ├── llm_skill.ts      # OpenAI integration
-│   │   ├── skill_chain.ts   # Middleware-like execution hub
-│   │   └── types.ts
-│   ├── services/
-│   │   └── openai_client.ts  # OpenAI API wrapper
+│   ├── index.ts              # Entry point
+│   ├── agents/
+│   │   ├── index.ts
+│   │   ├── hotel_agent_service.ts
+│   │   ├── specialist_agents.ts
+│   │   └── triage_agent.ts
+│   ├── tools/
+│   │   ├── document_tools.ts
+│   │   ├── database_tool.ts
+│   │   └── reservation_tool.ts
+│   ├── types/
+│   │   └── index.ts
 │   └── tui/
-│       └── app.ts         # Blessed-based terminal UI
-└── tests/                 # Vitest test files
-    ├── document_skill.test.ts
-    ├── database_skill.test.ts
-    ├── static_skill.test.ts
-    ├── llm_client.test.ts
-    ├── router.test.ts
-    └── conversation.test.ts
+│       └── app.ts            # Blessed-based terminal UI
+└── tests/
+    ├── tools/
+    │   ├── document_tools.test.ts
+    │   └── database_tool.test.ts
+    └── agents/
+        └── hotel_agent_service.test.ts
 ```
 
 ## 6. Configuration
@@ -301,16 +255,14 @@ hotel-concierge-ai/
 ### Environment Variables (.env)
 ```
 OPENAI_API_KEY=your_api_key_here
-HOTEL_NAME=Grand Horizon Hotel
-DEFAULT_GUEST_ID=G001  # For demo purposes
-LOG_LEVEL=info
+OPENAI_MODEL=gpt-4o-mini
 ```
 
-### Skills Config (skills.yaml)
-- Defines all skills with type, description, data_source
-- Skills need description (not just keywords) for LLM to understand
-- Router settings: fallback, timeout, confidence_threshold
-- Loaded at startup, immutable during runtime
+### Agent Configuration
+- Agent routing is encoded in `triageAgent` handoffs.
+- Specialist prompts are defined in `src/agents/specialist_agents.ts`.
+- Tool parameter schemas are defined with Zod in `src/tools/*`.
+- `data/skills.yaml` is no longer used.
 
 ## 7. Acceptance Criteria
 
@@ -330,10 +282,10 @@ LOG_LEVEL=info
 - [x] bookings skill queries from bookings.json
 - [x] wifi/static skill returns hardcoded response
 - [x] Unknown query falls back to LLM
-- [x] Configuration loads from skills.yaml
+- [x] Routing works through Agents SDK handoffs
 - [x] resolution skill handles multiple changes in single request
 - [x] date_change support (check_in, check_out)
-- [x] Chain of skills (SkillChain architecture)
+- [x] Booking updates flow through Agents SDK tools
 
 **Error Handling:**
 - [x] API errors show user-friendly messages
@@ -342,7 +294,7 @@ LOG_LEVEL=info
 
 **Testing:**
 - [x] Vitest test suite
-- [x] 45 tests passing
+- [x] Tool helper and agent service wrapper tests passing
 
 ## 8. Future Enhancements (Out of Scope for Demo)
 

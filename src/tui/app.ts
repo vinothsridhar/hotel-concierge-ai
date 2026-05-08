@@ -1,7 +1,7 @@
 import blessed from 'blessed';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SkillRouter } from '../router/skill_router';
+import { HotelAgentService } from '../agents';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -12,13 +12,13 @@ export class TUIApp {
   private screen: any;
   private chatBox: any;
   private inputBox: any;
-  private router: SkillRouter;
+  private agentService: HotelAgentService;
   private messages: ChatMessage[] = [];
   private isProcessing: boolean = false;
   private logFile: string;
 
-  constructor(router: SkillRouter) {
-    this.router = router;
+  constructor(agentService: HotelAgentService) {
+    this.agentService = agentService;
     this.logFile = path.resolve(process.cwd(), 'conversation.log');
 
     this.screen = blessed.screen({
@@ -104,7 +104,7 @@ export class TUIApp {
 
     this.addMessage('assistant', 'Thinking...');
 
-    this.router.route(text).then(response => {
+    this.agentService.route(text).then(response => {
       this.messages.push({ role: 'assistant', content: response.response });
       this.updateLastMessage(response.response);
       this.isProcessing = false;

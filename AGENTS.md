@@ -1,206 +1,188 @@
-# Hotel AI Assistant - Agent Implementation Guide
+# Hotel Concierge AI - Agent Implementation Guide
 
 ## Project Overview
 
 - **Project Name**: Hotel Concierge AI
-- **Type**: Terminal-based Text User Interface (TUI) Demo
+- **Type**: Terminal-based Text User Interface (TUI) demo
 - **Purpose**: AI-powered hotel assistant for guest queries via interactive CLI
 - **Language**: TypeScript (Node.js)
-- **Status**: Implementation in progress (see progress.md)
+- **Agent Framework**: OpenAI Agents SDK for JavaScript/TypeScript (`@openai/agents`)
+- **Status**: Agents SDK refactor implemented (see `progress.md`)
 
 ---
 
 ## Progress Tracking
 
 See [progress.md](./progress.md) for implementation status, completed features, and remaining tasks.
-update [progress.md](./progress.md) file whenever making code changes or requirement changes.
+Update [progress.md](./progress.md) whenever making code changes, documentation changes, or requirement changes.
 
 ---
 
-## What Is Done
+## Current Architecture
 
-### 1. Requirements Document
-- File: `REQ.md`
-- Defines UI/UX, functional specs, tech stack, acceptance criteria
+The app now uses OpenAI Agents SDK primitives instead of the old custom `SkillRouter` system.
 
-### 2. Data Files Created
-| File | Purpose |
-|------|---------|
-| `data/rooms.md` | Room types, pricing, amenities (5 room types) |
-| `data/menus.md` | Restaurant menus, hours, prices (5 venues) |
-| `data/amenities.md` | Pool, gym, spa, kids club, activities, rules |
-| `data/bookings.json` | Mock database: guests, bookings, invoices tables |
-| `data/skills.yaml` | Skill definitions and router config |
-
-### 3. Skill System Design
-
-**Skill Types:**
-- `document` - Reads from .md files (rooms, dining, amenities)
-- `database` - Queries JSON data (bookings, billing, guest_info)
-- `static` - Hardcoded responses (wifi, emergency, checkout)
-- `llm` - General fallback (general)
-
-**Intent Detection Flow:**
 ```
-User Query → LLM Intent Classification → Select Skill → Execute Skill → Return Response
+User Input → TUIApp
+           → HotelAgentService
+           → Runner + MemorySession
+           → Triage Agent
+           → Specialist Agent Handoff
+           → Tool-backed data access or static policy response
+           → TUI response
 ```
 
-**LLM-based Intent Detection:**
-- Uses skill `description` (not keywords) for matching
-- LLM returns: `{ skill, confidence, reasoning }`
-- Falls back to `general` LLM skill if confidence < threshold
+### Agents
+
+| Agent | Purpose |
+|-------|---------|
+| `triageAgent` | Entry agent that routes requests to the best specialist |
+| `roomsAgent` | Room types, pricing, beds, occupancy, room amenities |
+| `diningAgent` | Restaurants, menus, dining hours, cuisine, food prices |
+| `amenitiesAgent` | Pool, spa, gym, beach, kids club, activities |
+| `databaseAgent` | Existing bookings, guest profiles, invoices, billing |
+| `reservationAgent` | New room reservations |
+| `resolutionAgent` | Booking changes such as room type, dates, and guest count |
+| `wifiAgent` | WiFi network and access information |
+| `checkoutAgent` | Checkout and late checkout policies |
+| `emergencyAgent` | Emergency, medical, front desk, and security contacts |
+| `generalAgent` | General concierge help, greetings, recommendations, directions |
+
+### Tools
+
+| Tool Module | Purpose |
+|-------------|---------|
+| `src/tools/document_tools.ts` | Reads/searches `rooms.md`, `menus.md`, and `amenities.md` |
+| `src/tools/database_tool.ts` | Queries and updates `bookings.json` |
+| `src/tools/reservation_tool.ts` | Creates new bookings in `bookings.json` using `prices.json` |
 
 ---
 
-## Pending Implementation
+## Key Files
 
-### 1. Project Setup
-- [ ] Initialize Node.js project with package.json
-- [ ] Install dependencies: TypeScript, Blessed, OpenAI SDK, yaml
-- [ ] Create tsconfig.json
-
-### 2. Core Files to Create
 ```
 src/
-├── index.ts                    # Entry point, CLI setup
-├── router/
-│   ├── types.ts               # Skill, SkillResponse interfaces
-│   └── skill_router.ts        # Intent detection + routing logic
-├── skills/
-│   ├── document_skill.ts      # Read .md files, search by query
-│   ├── database_skill.ts      # Query JSON by guest ID/query
-│   ├── static_skill.ts        # Return predefined response
-│   └── llm_skill.ts           # OpenAI for general queries
+├── index.ts                    # Entry point, env checks, TUI setup
+├── agents/
+│   ├── index.ts                # Agent exports
+│   ├── hotel_agent_service.ts  # Runner + MemorySession wrapper used by TUI
+│   ├── specialist_agents.ts    # Specialist and static agent definitions
+│   └── triage_agent.ts         # Entry agent with handoffs
+├── tools/
+│   ├── document_tools.ts       # Tool-backed markdown search
+│   ├── database_tool.ts        # Tool-backed booking/profile/invoice access
+│   └── reservation_tool.ts     # Tool-backed reservation creation
 ├── tui/
-│   ├── app.ts                 # Main TUI application
-│   ├── widgets.ts             # Chat display, input, quick buttons
-│   └── screens.ts             # Screen definitions
-└── services/
-    └── openai_client.ts       # OpenAI API wrapper
+│   └── app.ts                  # Blessed-based terminal UI
+└── types/
+    └── index.ts                # Shared app/domain types
 ```
 
-### 3. Configuration
-- [ ] Create `.env.example` with OPENAI_API_KEY
-- [ ] Load skills.yaml at startup
+### Data Files
+
+| File | Purpose |
+|------|---------|
+| `data/rooms.md` | Room types, pricing, amenities |
+| `data/menus.md` | Restaurant menus, hours, prices |
+| `data/amenities.md` | Facilities, pool, gym, spa, activities |
+| `data/bookings.json` | Mock database: guests, bookings, invoices |
+| `data/prices.json` | Room pricing for reservations |
+
+`data/skills.yaml` was removed because routing is now encoded through Agents SDK handoffs.
 
 ---
 
-## Technical Decisions
+## Runtime Flow
 
-### TUI Framework: Blessed
-- Mature, well-documented
-- Good TypeScript support
-- Alternative: Ink (React-based) - more complex
+1. `src/index.ts` loads `.env` and checks `OPENAI_API_KEY`.
+2. `TUIApp` accepts user input and calls `HotelAgentService.route()`.
+3. `HotelAgentService` runs `triageAgent` with a reusable `Runner` and `MemorySession`.
+4. `triageAgent` hands off to a specialist agent based on the guest request.
+5. Specialist agents either call tools or return static policy responses.
+6. Tool results and agent responses return to the TUI as text.
 
-### AI: OpenAI GPT-4
-- Use `gpt-4o` model (latest, cheaper than gpt-4)
-- Two calls per user message:
-  1. Intent detection (small system prompt)
-  2. LLM fallback or skill data enrichment (if needed)
+---
 
-### Skill Router Logic
-1. Build system prompt with skill names + descriptions
-2. Ask LLM to classify intent
-3. If confidence >= threshold, execute matching skill
-4. If skill is document/database: search data file for relevant info
-5. If skill is static: return predefined response
-6. If skill is llm: call OpenAI directly
-7. If no match or low confidence: fall back to general LLM
+## Environment
+
+`.env.example` contains:
+
+```bash
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_MODEL=gpt-4o-mini
+```
+
+The Agents SDK requires Node.js 22+.
 
 ---
 
 ## How to Run
 
 ```bash
-# Install dependencies
 npm install
-
-# Copy env and add your OpenAI key
 cp .env.example .env
-# Edit .env with your OPENAI_API_KEY
-
-# Build
+# Edit .env with OPENAI_API_KEY
 npm run build
-
-# Run
 npm start
 ```
 
----
+For development:
 
-## Key Files Reference
-
-### skills.yaml Structure
-```yaml
-skills:
-  - name: string        # Unique identifier
-    type: string        # document | database | static | llm
-    description: string # Used for LLM intent matching
-    data_source?: string # File path for document/database
-    response?: string    # For static skills
-    fallback?: boolean  # True for general LLM skill
-
-router:
-  use_llm_fallback: boolean
-  confidence_threshold: number (0-1)
-  intent_timeout: number (ms)
-  response_timeout: number (ms)
-```
-
-### Data File: bookings.json
-```json
-{
-  "tables": {
-    "guests": [...],    // guest_id, name, email, phone, loyalty_tier
-    "bookings": [...],  // booking_id, guest_id, room_type, check_in, check_out, status
-    "invoices": [...]   // booking_id, items, paid, method
-  }
-}
+```bash
+npm run dev
 ```
 
 ---
 
-## Dependencies to Install
+## Testing
+
+```bash
+npm test
+npm run build
+```
+
+Current tests cover:
+
+- Document tool helpers
+- Database tool helpers
+- `HotelAgentService` empty-input behavior
+- Optional live Agents SDK smoke test when `OPENAI_API_KEY` is configured
+
+---
+
+## Dependencies
 
 ```json
 {
   "dependencies": {
+    "@openai/agents": "^0.11.0",
     "blessed": "^0.1.81",
-    "openai": "^4.0.0",
-    "yaml": "^2.3.0",
-    "dotenv": "^16.0.0"
+    "dotenv": "^16.0.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "@types/node": "^20.0.0",
     "@types/blessed": "^0.1.0",
-    "ts-node": "^10.0.0"
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
   }
 }
 ```
 
 ---
 
-## Implementation Order (Recommended)
+## Implementation Notes
 
-1. **Setup**: package.json, tsconfig.json, .env
-2. **Types**: Define Skill, SkillResponse, IntentRequest interfaces in `src/router/types.ts`
-3. **Skills**: Implement document_skill, database_skill, static_skill, llm_skill
-4. **Router**: Create skill_router.ts with LLM intent detection
-5. **TUI**: Build app.ts with chat interface and user input
-6. **Integration**: Wire TUI → Router → Skills → Data
-
----
-
-## Notes
-
-- Demo uses mock data (JSON files). In production, database skill would query real DB.
-- LLM fallback skill handles any query not matched to specific skills.
-- The TUI should show typing indicator while waiting for responses.
-- Quick action buttons in TUI for common queries (Rooms, Dining, WiFi, etc.).
+- Do not reintroduce the old `SkillRouter`, `SkillChain`, `skills.yaml`, or custom `openai_client` unless explicitly requested.
+- Prefer adding new capabilities as an agent, a tool, or a handoff.
+- Keep pure data lookup/update logic exported separately from SDK `tool()` wrappers so tests can run without live model calls.
+- Use Zod schemas for tool parameters.
+- Keep `HotelAgentService.route()` as the TUI-facing adapter unless there is a concrete need to change the UI contract.
+- The demo uses JSON files as mock persistence; production would replace tool internals with database calls.
 
 ---
 
 ## Change Logging
 
-- All code changes must be logged in [progress.md](./progress.md) with a brief description, date, and any relevant details for future reference.
+All code, documentation, and requirement changes must be logged in [progress.md](./progress.md) with date and a brief description.

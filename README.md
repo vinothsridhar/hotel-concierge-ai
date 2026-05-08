@@ -1,12 +1,12 @@
 # Hotel Concierge AI
 
-An AI-powered hotel concierge assistant with a terminal-based text user interface (TUI). Uses OpenAI GPT for natural language understanding and intent detection to answer guest queries about rooms, dining, amenities, and bookings.
+An AI-powered hotel concierge assistant with a terminal-based text user interface (TUI). Uses the OpenAI Agents SDK for specialist handoffs and tool-backed answers about rooms, dining, amenities, bookings, and hotel policies.
 
 ## Features
 
 - **Interactive CLI Interface**: Terminal-based chat UI built with Blessed
-- **Skill Router System**: Routes queries to appropriate handlers (document, database, static, LLM)
-- **Conversational Context**: Remembers guest identification across conversation turns
+- **Agents SDK Workflow**: Triage agent hands off to specialist agents
+- **Conversational Context**: Uses an Agents SDK in-memory session across conversation turns
 - **Multi-Action Support**: Handles multiple requests in a single query (e.g., "upgrade room and add guest")
 - **Mock Database**: JSON-based guest, booking, and invoice data
 
@@ -25,29 +25,27 @@ npm run build
 npm start
 ```
 
-## Skills
+## Agents And Tools
 
-| Skill | Type | Description |
+| Agent/Tool | Type | Description |
 |-------|------|-------------|
-| rooms | document | Room info from data/rooms.md |
-| dining | document | Restaurant menus from data/menus.md |
-| amenities | document | Hotel facilities from data/amenities.md |
-| bookings | database | Guest reservations (needs ID) |
-| guest_info | database | Guest profile (needs ID) |
-| wifi | static | WiFi information |
-| checkout | static | Checkout procedures |
-| emergency | static | Emergency contacts |
-| resolution | llm | Booking modifications |
-| general | llm | Fallback for general queries |
+| Triage Agent | agent | Routes requests to specialists |
+| Rooms Agent | agent + tool | Room info from `data/rooms.md` |
+| Dining Agent | agent + tool | Restaurant menus from `data/menus.md` |
+| Amenities Agent | agent + tool | Hotel facilities from `data/amenities.md` |
+| Guest Records Agent | agent + tool | Existing bookings, guest profile, invoices |
+| Reservation Agent | agent + tool | Creates new reservations |
+| Booking Resolution Agent | agent + tool | Booking modifications |
+| WiFi/Checkout/Emergency Agents | static agents | Hotel policy responses |
 
 ## Project Structure
 
 ```
 hotel-concierge-ai/
 ├── src/
-│   ├── router/          # Intent detection & routing
-│   ├── skills/         # Skill implementations
-│   ├── services/       # OpenAI client
+│   ├── agents/         # Agents SDK workflow
+│   ├── tools/          # Tool-backed data access
+│   ├── types/          # Shared types
 │   └── tui/           # Terminal UI
 ├── data/               # Data files (JSON, markdown)
 ├── tests/              # Vitest tests

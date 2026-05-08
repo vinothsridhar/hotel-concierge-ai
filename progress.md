@@ -28,6 +28,12 @@
 ### 7. Entry Point
 - [x] `index.ts` - Main CLI setup
 
+### 8. OpenAI Agents SDK Refactor
+- [x] Added `@openai/agents` + `zod`
+- [x] Replaced manual `SkillRouter` with Agents SDK triage + specialist agents
+- [x] Added tool-backed access for rooms, dining, amenities, bookings, booking updates, and reservations
+- [x] Replaced manual conversation history with `Runner` + `MemorySession`
+
 ---
 
 ## Remaining Tasks
@@ -37,7 +43,8 @@
 - [x] Build project (`npm run build`)
 - [x] Test and fix any build/runtime errors
 - [x] Implement conversational context for database queries
-- [ ] Add more test coverage
+- [x] Refactor tests for Agents SDK tools and service wrapper
+- [ ] Add more live agent handoff test coverage
 
 ## Change Log
 
@@ -68,6 +75,13 @@
 - 2026-05-03: Added make_reservation context_fields for booking flow
 - 2026-05-03: Fixed pendingActions - only continue flow for make_reservation skill
 - 2026-05-03: Added ReservationHandler - in-memory context for booking flow
+- 2026-05-08: Added OpenAI Agents SDK refactor plan in `openai-agents.md`
+- 2026-05-08: Installed `@openai/agents` and `zod`; removed direct `openai` and `yaml` dependencies
+- 2026-05-08: Replaced `SkillRouter`, custom skill classes, `SkillChain`, and `openai_client` with Agents SDK triage/specialist agents and tool modules
+- 2026-05-08: Updated TUI entry point to use `HotelAgentService` with `Runner` and `MemorySession`
+- 2026-05-08: Replaced old router/skill tests with document tool, database tool, and agent service tests
+- 2026-05-08: Updated `AGENTS.md` to document the OpenAI Agents SDK architecture and remove stale SkillRouter guidance
+- 2026-05-08: Updated `REQ.md` to replace stale SkillRouter, skills.yaml, and old file layout requirements with the Agents SDK architecture
 
 ---
 
@@ -78,15 +92,16 @@
 | package.json | Done |
 | tsconfig.json | Done |
 | .env.example | Done |
-| src/router/types.ts | Done |
-| src/skills/document_skill.ts | Done |
-| src/skills/database_skill.ts | Done |
-| src/skills/static_skill.ts | Done |
-| src/skills/llm_skill.ts | Done |
-| src/services/openai_client.ts | Done |
-| src/router/skill_router.ts | Done |
+| src/agents/index.ts | Done |
+| src/agents/hotel_agent_service.ts | Done |
+| src/agents/specialist_agents.ts | Done |
+| src/agents/triage_agent.ts | Done |
+| src/tools/document_tools.ts | Done |
+| src/tools/database_tool.ts | Done |
+| src/tools/reservation_tool.ts | Done |
+| src/types/index.ts | Done |
 | src/tui/app.ts | Done |
 | src/index.ts | Done |
 | data/prices.json | Done |
 
-**Total: 13 files created**
+**Current core implementation: Agents SDK-based architecture**
