@@ -22,6 +22,7 @@ Update [progress.md](./progress.md) whenever making code changes, documentation 
 
 The app now uses OpenAI Agents SDK primitives instead of the old custom `SkillRouter` system.
 
+### Text Mode (TUI)
 ```
 User Input → TUIApp
            → HotelAgentService
@@ -29,7 +30,21 @@ User Input → TUIApp
            → Triage Agent
            → Specialist Agent Handoff
            → Tool-backed data access or static policy response
-           → TUI response
+           → TUI text response
+```
+
+### Voice Mode
+```
+User speaks → Microphone (mic) → WAV stream (in memory)
+           → OpenAI Whisper (STT) → transcribed text
+           → HotelAgentService
+           → Runner + MemorySession
+           → Triage Agent
+           → Specialist Agent Handoff
+           → Tool-backed data access or static policy response
+           → Agent text response
+           → OpenAI TTS → MP3 (in memory)
+           → Audio playback (sox play via stdin) → User hears response
 ```
 
 ### Agents
@@ -62,18 +77,28 @@ User Input → TUIApp
 
 ```
 src/
-├── index.ts                    # Entry point, env checks, TUI setup
+├── index.ts                    # Entry point, env checks, mode setup
 ├── agents/
 │   ├── index.ts                # Agent exports
-│   ├── hotel_agent_service.ts  # Runner + MemorySession wrapper used by TUI
+│   ├── hotel_agent_service.ts  # Runner + MemorySession wrapper used by TUI/Voice
 │   ├── specialist_agents.ts    # Specialist and static agent definitions
 │   └── triage_agent.ts         # Entry agent with handoffs
+├── voice/
+│   ├── app.ts                  # Voice chat orchestrator (STT → Agent → TTS → Play)
+│   ├── stt.ts                  # OpenAI Whisper speech-to-text
+│   ├── tts.ts                  # OpenAI TTS text-to-speech
+│   ├── recorder.ts             # Microphone capture + WAV encoding
+│   └── player.ts               # Audio playback
 ├── tools/
 │   ├── document_tools.ts       # Tool-backed markdown search
 │   ├── database_tool.ts        # Tool-backed booking/profile/invoice access
 │   └── reservation_tool.ts     # Tool-backed reservation creation
 ├── tui/
 │   └── app.ts                  # Blessed-based terminal UI
+├── api/
+│   ├── server.ts               # Express server setup
+│   └── routes/
+│       └── chat.ts             # POST /api/chat endpoint
 └── types/
     └── index.ts                # Shared app/domain types
 ```
@@ -101,6 +126,16 @@ src/
 5. Specialist agents either call tools or return static policy responses.
 6. Tool results and agent responses return to the TUI as text.
 
+### Voice Flow
+
+1. `VoiceChatApp` waits for SPACE key to start recording from microphone.
+2. Audio captured as WAV stream via `mic` with `fileType: 'wav'`, buffered in memory.
+3. `stt.ts` sends WAV buffer to OpenAI Whisper for transcription.
+4. Transcribed text is routed through `HotelAgentService.route()`.
+5. `tts.ts` synthesizes agent response into MP3 buffer via OpenAI TTS.
+6. `player.ts` pipes the MP3 buffer to `play` (sox) via stdin for playback.
+7. Loop back to step 1 for next utterance.
+
 ---
 
 ## Environment
@@ -110,6 +145,11 @@ src/
 ```bash
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-4o-mini
+
+# Voice Mode (optional)
+# TTS_VOICE=alloy
+# TTS_SPEED=1.0
+# RECORD_TIMEOUT=10000
 ```
 
 The Agents SDK requires Node.js 22+.
@@ -158,11 +198,17 @@ Current tests cover:
     "@openai/agents": "^0.11.0",
     "blessed": "^0.1.81",
     "dotenv": "^16.0.0",
+    "express": "^4.21.0",
+    "mic": "^2.1.2",
+    "openai": "^6.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/blessed": "^0.1.0",
+    "@types/express": "^4.17.21",
     "@types/node": "^20.0.0",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
     "ts-node": "^10.0.0",
     "typescript": "^5.0.0",
     "vitest": "^1.0.0"

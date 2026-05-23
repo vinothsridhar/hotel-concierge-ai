@@ -91,7 +91,7 @@
       {
         "id": "B1002",
         "guest_id": "G002",
-        "room_type": "Executive Suite",
+        "room_type": "Deluxe Room",
         "check_in": "2026-05-03",
         "check_out": "2026-05-08",
         "guests": 1,
@@ -182,7 +182,7 @@
       {
         "id": "B4489",
         "guest_id": "G030",
-        "room_type": "Standard",
+        "room_type": "Deluxe",
         "check_in": "2023-05-10",
         "check_out": "2023-05-15",
         "guests": 5,

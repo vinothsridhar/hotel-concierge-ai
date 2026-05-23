@@ -82,6 +82,28 @@
 - 2026-05-08: Replaced old router/skill tests with document tool, database tool, and agent service tests
 - 2026-05-08: Updated `AGENTS.md` to document the OpenAI Agents SDK architecture and remove stale SkillRouter guidance
 - 2026-05-08: Updated `REQ.md` to replace stale SkillRouter, skills.yaml, and old file layout requirements with the Agents SDK architecture
+- 2026-05-08: Removed Blessed color/style tags from TUI rendering to prevent literal `{green}` placeholders in terminals that do not parse tags
+- 2026-05-08: Fixed TUI input focus so the textbox regains focus after mouse clicks or blur events
+- 2026-05-08: Adjusted TUI focus handling to use Blessed `inputOnFocus` and avoid aggressive blur refocus that prevented input focus
+- 2026-05-08: Removed `inputOnFocus` and render-time refocus from TUI to prevent duplicate textbox input characters
+- 2026-05-08: Added input-level and SIGINT exit handlers so Ctrl+C terminates the TUI reliably
+- 2026-05-08: Restored explicit startup input focus and made the chat area non-focusable so mouse clicks do not steal keyboard input
+- 2026-05-08: Added scaling requirements to `REQ.md`, prioritizing an API layer as the next architecture phase
+- 2026-05-11: Implemented Phase 1: API Layer - Added Express API server with POST /api/chat endpoint
+- 2026-05-11: Added request validation using Zod schema for message and sessionId
+- 2026-05-11: Added structured error responses for validation, model, and tool failures
+- 2026-05-11: Updated index.ts to support both 'tui' and 'api' modes via command line
+- 2026-05-11: Added API tests in tests/api/chat.test.ts covering validation and error handling
+- 2026-05-23: Implemented Voice Mode - added voice chat pipeline (mic capture → Whisper STT → Agent → TTS → audio playback)
+- 2026-05-23: Created voice modules: stt.ts, tts.ts, recorder.ts, player.ts, app.ts
+- 2026-05-23: Added `voice` mode to index.ts via `npm start voice`
+- 2026-05-23: Updated AGENTS.md with voice architecture diagrams
+- 2026-05-23: Refactored voice pipeline to in-memory buffers — no disk I/O
+- 2026-05-23: Fixed recorder: use mic `fileType: 'wav'` instead of raw PCM + wavefile encoding
+- 2026-05-23: Fixed player: use sox `play` via stdin instead of node-wav-player
+- 2026-05-23: Removed node-wav-player and wavefile dependencies (no longer needed)
+- 2026-05-23: Fixed stdin conflict between recorder and app raw mode management
+- 2026-05-23: Added lazy OpenAI client init in stt.ts/tts.ts (fixes dotenv timing)
 
 ---
 
@@ -103,5 +125,14 @@
 | src/tui/app.ts | Done |
 | src/index.ts | Done |
 | data/prices.json | Done |
+| src/api/server.ts | Done |
+| src/api/routes/chat.ts | Done |
+| tests/api/chat.test.ts | Done |
+| src/voice/stt.ts | Done |
+| src/voice/tts.ts | Done |
+| src/voice/recorder.ts | Done |
+| src/voice/player.ts | Done |
+| src/voice/app.ts | Done |
+| src/types/voice.d.ts | Done |
 
-**Current core implementation: Agents SDK-based architecture**
+**Current core implementation: Agents SDK-based architecture with API layer and in-memory voice mode**

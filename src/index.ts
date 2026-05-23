@@ -1,6 +1,8 @@
 import * as dotenv from 'dotenv';
 import { HotelAgentService } from './agents';
 import { TUIApp } from './tui/app';
+import { startApiServer } from './api/server';
+import { VoiceChatApp } from './voice/app';
 
 dotenv.config();
 
@@ -13,7 +15,7 @@ function checkApiKey(): void {
   }
 }
 
-async function main() {
+async function startTUI() {
   checkApiKey();
 
   const agentService = new HotelAgentService();
@@ -22,7 +24,29 @@ async function main() {
   app.run();
 }
 
-main().catch(e => {
-  console.error('Fatal error:', e);
+async function startVoice() {
+  checkApiKey();
+
+  const agentService = new HotelAgentService();
+  const app = new VoiceChatApp(agentService);
+  app.run();
+}
+
+async function startAPI() {
+  checkApiKey();
+  startApiServer();
+}
+
+const mode = process.argv[2] || 'tui';
+
+if (mode === 'voice') {
+  startVoice();
+} else if (mode === 'api') {
+  startAPI();
+} else if (mode === 'tui') {
+  startTUI();
+} else {
+  console.error(`Unknown mode: ${mode}`);
+  console.log('Usage: npm start [tui|api|voice]');
   process.exit(1);
-});
+}

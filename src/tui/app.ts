@@ -23,6 +23,7 @@ export class TUIApp {
 
     this.screen = blessed.screen({
       smartCSR: true,
+      mouse: true,
       title: 'Hotel Concierge AI'
     });
 
@@ -36,7 +37,8 @@ export class TUIApp {
       mouse: true,
       tags: true,
       vi: true,
-      keys: true
+      keys: false,
+      focusable: false
     });
 
     this.inputBox = blessed.textbox({
@@ -64,26 +66,49 @@ export class TUIApp {
 
     this.screen.append(container);
 
-    this.inputBox.focus();
-    this.screen.render();
-
     this.inputBox.on('submit', () => {
       if (this.isProcessing) return;
       
       const text = this.inputBox.getValue();
-      if (!text || !text.trim()) return;
+      if (!text || !text.trim()) {
+        this.render();
+        return;
+      }
       
       this.inputBox.clearValue();
       this.handleUserInput(text);
     });
 
-    this.screen.key(['escape', 'q', 'C-c'], () => {
-      process.exit(0);
-    });
+    const exit = () => this.exit();
+
+    this.screen.key(['escape', 'q', 'C-c'], exit);
+    this.inputBox.key(['escape', 'C-c'], exit);
+    process.once('SIGINT', exit);
 
     this.screen.key('f2', () => {
       this.saveConversation();
     });
+
+    this.chatBox.on('click', () => {
+      this.focusInput();
+    });
+
+    this.screen.on('click', () => {
+      this.focusInput();
+    });
+
+    this.focusInput();
+  }
+
+  private focusInput(): void {
+    if (this.screen.focused !== this.inputBox) {
+      this.inputBox.focus();
+    }
+    this.screen.render();
+  }
+
+  private render(): void {
+    this.screen.render();
   }
 
   private saveConversation(): void {
@@ -92,8 +117,13 @@ export class TUIApp {
     ).join('\n\n');
     
     fs.writeFileSync(this.logFile, content, 'utf-8');
-    this.chatBox.pushLine('{yellow}Conversation saved to conversation.log{/yellow}');
-    this.screen.render();
+    this.chatBox.pushLine('Conversation saved to conversation.log');
+    this.render();
+  }
+
+  private exit(): void {
+    this.screen.destroy();
+    process.exit(0);
   }
 
   private handleUserInput(text: string): void {
@@ -119,25 +149,25 @@ export class TUIApp {
   private parseMarkdown(text: string): string {
     let parsed = text;
 
-    parsed = parsed.replace(/^### (.+)$/gm, '{bold}$1{/bold}');
-    parsed = parsed.replace(/^## (.+)$/gm, '{bold}$1{/bold}');
-    parsed = parsed.replace(/^# (.+)$/gm, '{bold}$1{/bold}');
+    parsed = parsed.replace(/^### (.+)$/gm, '$1');
+    parsed = parsed.replace(/^## (.+)$/gm, '$1');
+    parsed = parsed.replace(/^# (.+)$/gm, '$1');
 
-    parsed = parsed.replace(/\*\*(.+?)\*\*/g, '{bold}$1{/bold}');
-    parsed = parsed.replace(/\*(.+?)\*/g, '{italic}$1{/italic}');
+    parsed = parsed.replace(/\*\*(.+?)\*\*/g, '$1');
+    parsed = parsed.replace(/\*(.+?)\*/g, '$1');
 
     parsed = parsed.replace(/^- (.+)$/gm, '  - $1');
     parsed = parsed.replace(/^\d+\. (.+)$/gm, '  $1');
 
-    parsed = parsed.replace(/`(.+?)`/g, '{cyan}$1{/cyan}');
+    parsed = parsed.replace(/`(.+?)`/g, '$1');
 
-    parsed = parsed.replace(/\[(.+?)\]\((.+?)\)/g, '{underline}$1{/underline}');
+    parsed = parsed.replace(/\[(.+?)\]\((.+?)\)/g, '$1');
 
     return parsed;
   }
 
   private addMessage(role: 'user' | 'assistant', content: string): void {
-    const prefix = role === 'user' ? '{green}You:{/green} ' : '{cyan}Concierge:{/cyan} ';
+    const prefix = role === 'user' ? 'You: ' : 'Concierge: ';
     const formatted = this.parseMarkdown(content);
     const lines = formatted.split('\n');
     
@@ -147,14 +177,14 @@ export class TUIApp {
     }
     
     this.chatBox.setScrollPerc(100);
-    this.screen.render();
+    this.render();
   }
 
   private updateLastMessage(content: string): void {
     const content_lines = this.chatBox.getContent().split('\n');
     const parsed = this.parseMarkdown(content);
     const lines = parsed.split('\n');
-    const prefix = '{cyan}Concierge:{/cyan} ';
+    const prefix = 'Concierge: ';
     
     const newLines: string[] = [];
     for (let i = 0; i < lines.length; i++) {
@@ -164,12 +194,12 @@ export class TUIApp {
     content_lines.splice(-1, 1, ...newLines);
     this.chatBox.setContent(content_lines.join('\n'));
     this.chatBox.setScrollPerc(100);
-    this.screen.render();
+    this.render();
   }
 
   public showWelcome(): void {
     const welcome = `
-{bold}{yellow}Welcome to Hotel Concierge AI{/yellow}{/bold}
+Welcome to Hotel Concierge AI
 
 How may I assist you today?
 - Room information and pricing
@@ -179,13 +209,13 @@ How may I assist you today?
 - WiFi and checkout info
 
 Type your question or press Enter.
-Press **F2** to save conversation.
+Press F2 to save conversation.
 `;
     this.chatBox.pushLine(welcome);
-    this.screen.render();
+    this.render();
   }
 
   public run(): void {
-    this.screen.render();
+    this.render();
   }
 }

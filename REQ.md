@@ -304,3 +304,98 @@ OPENAI_MODEL=gpt-4o-mini
 - Room service ordering
 - Booking capabilities
 - Push notifications
+
+## 9. Scaling Requirements
+
+The current implementation is a terminal demo using OpenAI Agents SDK, local markdown files, and JSON mock persistence. To scale toward a production app, the architecture should evolve in phases.
+
+### Phase 1: Add API Layer
+
+Create a backend API so clients do not call `HotelAgentService` directly from the TUI.
+
+**Target Architecture:**
+```
+TUI / Web / Mobile Client
+        ↓
+HTTP API / WebSocket API
+        ↓
+HotelAgentService
+        ↓
+Agents SDK Runner + Specialist Agents + Tools
+        ↓
+Database / PMS / CMS integrations
+```
+
+**Requirements:**
+- Add an API server using a lightweight Node.js framework such as Fastify, Express, Hono, or NestJS.
+- Expose a chat endpoint, for example `POST /api/chat`, that accepts a user message and returns the concierge response.
+- Keep `HotelAgentService.route()` as the service boundary used by both the TUI and API.
+- Add request validation for incoming messages.
+- Add structured error responses for model/API/tool failures.
+- Keep the TUI functional by either calling the service directly or optionally calling the local API.
+- Add API tests for empty messages, normal chat requests, and error handling.
+
+**Initial API Contract:**
+```json
+POST /api/chat
+{
+  "message": "what rooms do you have?",
+  "sessionId": "optional-session-id"
+}
+```
+
+```json
+200 OK
+{
+  "response": "...",
+  "skill": "Rooms Agent",
+  "sessionId": "..."
+}
+```
+
+### Phase 2: Replace JSON Persistence
+
+- Replace `data/bookings.json` with a database such as PostgreSQL.
+- Move booking, guest, and invoice logic behind repository/service classes.
+- Keep tool modules thin: tools should call services instead of reading/writing files directly.
+- Use Redis or database-backed session storage instead of `MemorySession` for multi-instance deployments.
+
+### Phase 3: Authentication and Guest Verification
+
+- Require verification before returning guest-specific booking, billing, or profile data.
+- Supported verification options may include booking reference + last name, email OTP, hotel app login, or PMS-authenticated guest token.
+- Prevent disclosure of another guest's data based only on a name.
+
+### Phase 4: Hotel System Integrations
+
+- Integrate with PMS systems such as Opera, Mews, Cloudbeds, or StayNTouch.
+- Integrate with POS/room-service, CRM/loyalty, payment/invoice, and maintenance/ticketing systems.
+- Replace mock tools with production service clients.
+
+### Phase 5: Safety, Guardrails, and Auditability
+
+- Require explicit confirmation before write tools modify bookings.
+- Validate room availability, date ranges, guest counts, and pricing before reservation or modification.
+- Log every tool call and booking mutation with user/session context.
+- Add escalation to staff for unsafe, ambiguous, or high-impact requests.
+
+### Phase 6: Observability and Operations
+
+- Track agent handoffs, tool calls, latency, failures, and booking mutations.
+- Enable OpenAI tracing or equivalent tracing for agent workflows.
+- Add structured application logs and metrics dashboards.
+- Monitor hallucination/error reports and guest satisfaction signals.
+
+### Phase 7: Additional Specialist Agents
+
+- Add `EscalationAgent` for staff handoff.
+- Add `RoomServiceAgent` for food and amenity ordering.
+- Add `HousekeepingAgent` for cleaning, towels, maintenance, and room requests.
+- Add `TransportationAgent` for taxis, shuttles, airport transfers, and local directions.
+- Add `ComplaintResolutionAgent` for guest issues and service recovery.
+
+### Phase 8: Multi-Property Support
+
+- Add hotel/property ID to request context.
+- Partition room, dining, amenities, booking, and policy data by property.
+- Ensure agents and tools always operate within the active property context.
